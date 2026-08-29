@@ -10,7 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 
-const API_BASE = '/api'
+const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
 const VARIANTS = [
   { key: 'baseline', label: 'Baseline', color: '#64748b' },
