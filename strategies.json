@@ -1,0 +1,14 @@
+{
+  "SQL Injection": {
+    "strategy": "Look for f-strings or string concatenation in database queries. Check cursor.execute() calls for direct variable interpolation instead of parameterized queries.",
+    "score": 8.7
+  },
+  "Command Injection": {
+    "strategy": "Search for os.system(), subprocess.run() with shell=True, or eval() calls that include user input without sanitization.",
+    "score": 8.7
+  },
+  "Cross-Site Scripting (XSS)": {
+    "strategy": "Look for '| safe' filter in Jinja templates or direct HTML string formatting with user input. Check render_template_string() calls.",
+    "score": 7.4
+  }
+}

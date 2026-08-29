@@ -4,7 +4,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from agent.agent import run_agent
+from agent.agent import run_agent, save_strategy
 from evaluator.evaluate import AgentFinding, evaluate, generate_feedback_string, load_challenge
 
 CHALLENGES_DIR = Path("challenges")
@@ -43,6 +43,15 @@ def run_variant_on_challenge(variant: str, challenge_name: str, feedback: str = 
     result_feedback = generate_feedback_string(eval_result)
 
     print(f"  [{variant}] Challenge: {challenge_name} | Score: {eval_result.total_score}/10.0")
+
+    # Save successful strategies for continuous learning
+    if eval_result.total_score >= 7 and answer.get("explanation"):
+        save_strategy(
+            vuln_type=answer.get("vulnerability_type", challenge_name),
+            strategy=answer["explanation"],
+            score=eval_result.total_score
+        )
+
     return {
         "variant": variant,
         "challenge": challenge_name,

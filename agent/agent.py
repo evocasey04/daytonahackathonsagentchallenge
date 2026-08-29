@@ -1,6 +1,7 @@
 import json
 import os
 import requests
+from pathlib import Path
 from agent.tools import GEMINI_TOOLS, dispatch
 from agent.sandbox import create_sandbox, destroy_sandbox
 
@@ -22,6 +23,32 @@ Do not include any text outside the JSON in your final answer."""
 MODEL = "gemini-flash-lite-latest"
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
 MAX_TOOL_CALLS = 20
+
+STRATEGIES_FILE = Path(__file__).parent.parent / "strategies.json"
+
+
+def load_strategies() -> dict:
+    """Load learned strategies from disk."""
+    if STRATEGIES_FILE.exists():
+        with open(STRATEGIES_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+
+def save_strategy(vuln_type: str, strategy: str, score: float):
+    """Save a successful strategy for a vulnerability type."""
+    strategies = load_strategies()
+
+    # Only save if score is good (>= 7) or better than existing
+    existing = strategies.get(vuln_type, {})
+    if score >= 7 and score > existing.get("score", 0):
+        strategies[vuln_type] = {
+            "strategy": strategy,
+            "score": score
+        }
+        with open(STRATEGIES_FILE, "w") as f:
+            json.dump(strategies, f, indent=2)
+        print(f"  [LEARNED] Saved strategy for {vuln_type} (score: {score})")
 
 
 def run_agent(challenge_dir: str, variant: str = "self_improving", feedback: str = "", history: list = None) -> dict:
@@ -110,6 +137,14 @@ def run_agent(challenge_dir: str, variant: str = "self_improving", feedback: str
 
 def _build_system_prompt(variant: str, feedback: str, history: list) -> str:
     prompt = SYSTEM_PROMPT
+
+    # Load learned strategies for all variants except baseline
+    if variant != "baseline":
+        strategies = load_strategies()
+        if strategies:
+            prompt += "\n\n## Learned Patterns from Previous Sessions:\n"
+            for vuln_type, data in strategies.items():
+                prompt += f"- {vuln_type}: {data['strategy']}\n"
 
     if variant == "baseline":
         prompt += "\n\nYou do not have access to tools. Reason from general knowledge only."
