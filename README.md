@@ -40,15 +40,31 @@ An AI security agent that learns to find vulnerabilities in code. Runs inside is
 
 ---
 
-## Person 3 — Orchestrator + Demo
+## Person 3 — Orchestrator + Frontend + Demo
 
-**Goal:** Wire everything together, run the arena, prepare the demo.
+**Goal:** Wire everything together, build the React dashboard, run the arena, prepare the demo.
 
+### Backend (first half)
 - `main.py` — runs all three agent variants across all five challenges using a thread pool (one Daytona sandbox per agent per challenge)
 - Runs 3 generations — each generation passes the previous round's feedback back into the self-improving agent
-- Prints a leaderboard after each generation showing scores per variant
-- Saves all results to `results.json`
-- Owns the demo — clean run from scratch before 4:30 PM showing score improvement across generations and three sandboxes running in parallel
+- Saves all results to `results.json` as they come in
+- Add a small Flask/FastAPI server (`server.py`) with two endpoints:
+  - `POST /run` — triggers `main.py` and streams progress
+  - `GET /results` — returns current `results.json`
+
+### Frontend (second half)
+- React app in `dashboard/` — single page, no routing needed
+- Three panels:
+  - **Leaderboard** — bar chart showing Baseline vs ToolAgent vs Self-Improving scores per generation
+  - **Agent Activity Log** — live scrolling feed of what each agent is doing (sandbox created, tool calls, answer submitted, reward received)
+  - **Challenge Results Table** — per challenge, per variant: ✓/✗ for detection, file, line, severity
+- Polls `GET /results` every 2 seconds to update in real time
+- Stack: React + Vite, TailwindCSS for styling, Recharts for the score graph
+- Keep it to one file (`App.jsx`) if time is tight — ship something that works over something that looks perfect
+
+### Demo
+- Owns the demo — clean run from scratch before 4:30 PM
+- Show: sandboxes spinning up → agent activity → generation 1 vs 3 score comparison → leaderboard with winner highlighted
 
 ---
 
