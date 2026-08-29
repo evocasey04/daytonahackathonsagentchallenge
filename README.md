@@ -1,105 +1,60 @@
 # CyberAgent Arena
 
-An AI security agent that learns to find vulnerabilities in code. It investigates deliberately vulnerable repositories inside isolated Daytona sandboxes, gets scored by an automated evaluator, and improves its strategy across generations. Multiple agent variants run in parallel — the strongest gets promoted.
+An AI security agent that learns to find vulnerabilities in code. Runs inside isolated Daytona sandboxes, gets scored by an evaluator, and improves its strategy across generations. Three agent variants compete in parallel — the strongest gets promoted.
 
 ---
 
-## The Pitch
+## Person 1 — Challenges + Evaluator
 
-> "We built a cybersecurity agent that learns from its mistakes. It investigates vulnerable code inside isolated Daytona sandboxes, gets rewarded for finding real vulnerabilities, and improves its investigation strategy over repeated experiments."
+**Goal:** Create the vulnerable repos and the scoring system.
 
----
-
-## How It Works
-
-1. **Challenges** — 5 small vulnerable repositories (SQL injection, XSS, command injection, path traversal, hardcoded secrets). Each has a hidden `ground_truth.json`.
-2. **Daytona sandbox** — every agent run gets its own fresh, isolated sandbox spun up in ~90ms. Sandbox is destroyed after the run.
-3. **Agent** — uses LLM + tools (`list_files`, `read_file`, `search_code`, `run_static_analysis`) to investigate the repo and submit a vulnerability report.
-4. **Evaluator** — compares the agent's report against ground truth and returns a reward score.
-5. **Feedback loop** — reward + feedback is passed back to the agent so it can adjust its investigation strategy next round.
-6. **Parallel arena** — three agent variants (Baseline, ToolAgent, Self-Improving) run simultaneously, each in its own Daytona sandbox.
-7. **Dashboard** — live React UI showing sandbox activity, scores per generation, and agent comparison.
-
----
-
-## Reward Scoring
-
-| Behaviour | Points |
-|---|---|
-| Correct vulnerability type | +5 |
-| Correct file | +2 |
-| Correct line | +2 |
-| Correct severity | +1 |
-| False positive | -3 |
-| Missed vulnerability | -5 |
-| Unnecessary tool call | -0.1 |
-
-**Score = 40% detection + 25% localisation + 15% explanation + 10% severity + 10% efficiency**
+- Create 5 small vulnerable repositories, one per vulnerability type:
+  - SQL Injection
+  - Cross-Site Scripting (XSS)
+  - Command Injection
+  - Path Traversal
+  - Hardcoded Credentials
+- Each repo has one vulnerable file and a hidden `ground_truth.json` containing: vulnerability type, file, line number, severity
+- Build `evaluator/evaluate.py` — takes the agent's answer and compares it against ground truth
+- Scoring: +5 correct vulnerability, +2 correct file, +2 correct line, +1 correct severity, -3 false positive, -5 missed, -0.1 per unnecessary tool call
+- Final score formula: 40% detection + 25% localisation + 15% explanation + 10% severity + 10% efficiency
+- Return a feedback string explaining what the agent got wrong so it can improve next round
 
 ---
 
-## Daytona Architecture
+## Person 2 — Agent + Daytona Integration
 
-```
-          CyberAgent Arena
-                 │
-   ┌─────────────┼─────────────┐
-   ↓             ↓             ↓
-Sandbox 1     Sandbox 2     Sandbox 3
- Baseline      ToolAgent    Self-Improving
-   │             │             │
- Agent          Agent         Agent
-   └─────────────┼─────────────┘
-                 ↓
-             Evaluator
-                 ↓
-             Dashboard
-```
+**Goal:** Build the agent that investigates repos inside Daytona sandboxes.
 
-Each sandbox is created fresh per run via `daytona.create()` and deleted after — isolated, reproducible, and disposable.
+- `sandbox.py` — create a fresh Daytona sandbox per run, upload the challenge repo into it, run commands, destroy it after
+- `tools.py` — implement four tools the agent can call inside the sandbox:
+  - `list_files` — list all files in the repo
+  - `read_file` — read a specific file
+  - `search_code` — grep for a pattern across the repo
+  - `run_static_analysis` — run bandit inside the sandbox and return JSON results
+- `agent.py` — LLM agent loop using Claude with tool use:
+  - **Baseline variant** — no tools, reasons from prompt alone
+  - **Tool Agent variant** — has access to all four tools
+  - **Self-Improving variant** — receives reward + feedback from previous round and adjusts its strategy
+- Each run returns: the agent's answer (vulnerability, file, line, severity, explanation) and number of tool calls used
 
 ---
 
-## Project Structure
+## Person 3 — Orchestrator + Demo
 
-```
-/
-├── challenges/                  # Person 1
-│   ├── sql_injection/           # Vulnerable repo + ground truth
-│   ├── xss/
-│   ├── command_injection/
-│   ├── path_traversal/
-│   └── hardcoded_secret/
-├── evaluator/                   # Person 1
-│   └── evaluate.py              # Scores agent answer vs ground truth
-├── agent/                       # Person 2
-│   ├── sandbox.py               # Daytona create/run/destroy
-│   ├── tools.py                 # list_files, read_file, search_code, run_static_analysis
-│   └── agent.py                 # LLM agent loop + feedback/self-improvement
-├── dashboard/                   # Person 3
-│   └── (React app)              # Live scores, sandbox activity, generation graph
-├── main.py                      # Person 3 — orchestrator, runs arena
-└── requirements.txt
-```
+**Goal:** Wire everything together, run the arena, prepare the demo.
+
+- `main.py` — runs all three agent variants across all five challenges using a thread pool (one Daytona sandbox per agent per challenge)
+- Runs 3 generations — each generation passes the previous round's feedback back into the self-improving agent
+- Prints a leaderboard after each generation showing scores per variant
+- Saves all results to `results.json`
+- Owns the demo — clean run from scratch before 4:30 PM showing score improvement across generations and three sandboxes running in parallel
 
 ---
 
-## Team Split
+## Daytona's Role
 
-### Person 1 — Challenges + Evaluator
-- Create the 5 vulnerable challenge repos with realistic vulnerable code
-- Write `ground_truth.json` for each (vulnerability, file, line, severity)
-- Build `evaluator/evaluate.py` — takes agent answer + ground truth, returns scored result
-
-### Person 2 — Agent + Daytona Integration
-- Wire up Daytona: `sandbox.py` — create sandbox, upload challenge, exec commands, destroy
-- Build `tools.py` — `list_files`, `read_file`, `search_code`, `run_static_analysis` (runs bandit inside sandbox)
-- Build `agent.py` — LLM loop that uses tools, submits report, receives reward, updates strategy
-
-### Person 3 — Orchestrator + Dashboard
-- `main.py` — runs all three agent variants in parallel using `asyncio` + Daytona
-- React dashboard — generation score graph, live agent activity log, challenge results table
-- Demo prep — clean run from scratch before 4:30 PM
+Every agent run gets its own isolated Daytona sandbox — the vulnerable code never runs on your machine. Sandboxes are created in ~90ms and destroyed immediately after the scan. This lets us run all three agent variants simultaneously without them interfering with each other.
 
 ---
 
@@ -109,26 +64,10 @@ Each sandbox is created fresh per run via `daytona.create()` and deleted after �
 pip install -r requirements.txt
 ```
 
-```powershell
-$env:DAYTONA_API_KEY = "your_key"      # https://app.daytona.io → Settings → API Keys
-$env:ANTHROPIC_API_KEY = "your_key"    # https://console.anthropic.com
+```
+DAYTONA_API_KEY=your_key
+ANTHROPIC_API_KEY=your_key
 ```
 
 ```bash
 python main.py
-```
-
----
-
-## Demo Flow (2 min)
-
-1. Show dashboard. "Security agents are hard to evaluate objectively. So we built an arena."
-2. Click **Run Arena** — three Daytona sandboxes spin up live.
-3. Show agent activity log: `READ app.py → SEARCH "query" → FOUND SQL injection → Score: +10`
-4. Show generation 1 → 5 score improvement graph.
-5. Show three agents running in parallel, scores updating in real time.
-6. "The best agent gets promoted. The weak ones are killed. That's the loop."
-
----
-
-Built at **Give(a)Go × Daytona HackSprint**, Dublin, August 2026.
