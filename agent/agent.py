@@ -19,7 +19,7 @@ Your final answer MUST be a JSON object in this exact format:
 
 Do not include any text outside the JSON in your final answer."""
 
-MODEL = "gemini-3.6-flash"
+MODEL = "gemini-flash-lite-latest"
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
 MAX_TOOL_CALLS = 20
 
