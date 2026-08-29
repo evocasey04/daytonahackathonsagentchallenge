@@ -1,6 +1,5 @@
 import os
-import shutil
-from daytona import Daytona, CreateSandboxParams
+from daytona import Daytona, CreateSandboxFromSnapshotParams
 
 
 _client = None
@@ -16,7 +15,7 @@ def get_client() -> Daytona:
 def create_sandbox(challenge_dir: str):
     """Spin up a fresh Daytona sandbox and upload the challenge repo into it."""
     client = get_client()
-    sandbox = client.create(CreateSandboxParams(language="python"))
+    sandbox = client.create(CreateSandboxFromSnapshotParams(language="python"))
 
     sandbox.process.exec("mkdir -p /workspace/challenge")
 
@@ -26,8 +25,6 @@ def create_sandbox(challenge_dir: str):
             with open(fpath, "rb") as f:
                 content = f.read()
             sandbox.fs.upload_file(content, f"/workspace/challenge/{fname}")
-
-    sandbox.process.exec("pip install bandit flask boto3 -q")
 
     return sandbox
 

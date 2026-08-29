@@ -1,3 +1,5 @@
+import shlex
+
 from agent.sandbox import exec_in_sandbox
 
 
@@ -6,18 +8,19 @@ def list_files(sandbox) -> str:
 
 
 def read_file(sandbox, filename: str) -> str:
-    return exec_in_sandbox(sandbox, f"cat /workspace/challenge/{filename}")
+    return exec_in_sandbox(sandbox, f"cat -- {shlex.quote(f'/workspace/challenge/{filename}')}")
 
 
 def search_code(sandbox, pattern: str) -> str:
     return exec_in_sandbox(
-        sandbox, f"grep -rn '{pattern}' /workspace/challenge/ 2>/dev/null"
+        sandbox, f"grep -rn -- {shlex.quote(pattern)} /workspace/challenge/ 2>/dev/null"
     )
 
 
 def run_static_analysis(sandbox) -> str:
     return exec_in_sandbox(
         sandbox,
+        "pip install bandit -q 2>/dev/null; "
         "bandit -r /workspace/challenge/ -f json -q 2>/dev/null || true",
     )
 
