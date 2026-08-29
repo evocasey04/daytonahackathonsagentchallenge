@@ -1,2 +1,4 @@
 daytona>=0.207.0
 anthropic>=1.0.0
+flask>=3.0.0
+flask-cors>=4.0.0

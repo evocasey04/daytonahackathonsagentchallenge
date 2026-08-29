@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from agent.agent import run_agent
@@ -54,7 +54,7 @@ def run_variant_on_challenge(variant: str, challenge_name: str, feedback: str = 
     }
 
 
-def run_generation(generation: int, agent_histories: dict) -> list:
+def run_generation(generation: int, agent_histories: dict, on_result=None) -> list:
     print(f"\n=== Generation {generation} ===")
     challenges = [d.name for d in CHALLENGES_DIR.iterdir() if d.is_dir()]
     results = []
@@ -68,8 +68,11 @@ def run_generation(generation: int, agent_histories: dict) -> list:
                 futures.append(
                     executor.submit(run_variant_on_challenge, variant, challenge, feedback, history)
                 )
-        for future in futures:
-            results.append(future.result())
+        for future in as_completed(futures):
+            result = future.result()
+            results.append(result)
+            if on_result:
+                on_result(result)
 
     return results
 
@@ -104,25 +107,30 @@ def print_leaderboard(all_results: list):
         r["score"] for r in all_results if r["variant"] == v
     ))
     print(f"\n  Promoted Agent: {winner.upper()}")
+    print("\nResults saved to results.json")
 
 
 def save_results(all_results: list):
     with open("results.json", "w") as f:
         json.dump(all_results, f, indent=2)
-    print("\nResults saved to results.json")
 
 
-def main():
+def main(on_result=None):
     agent_histories = {}
     all_results = []
 
+    def handle_result(result: dict, generation: int):
+        tagged = {**result, "generation": generation}
+        all_results.append(tagged)
+        save_results(all_results)
+        if on_result:
+            on_result(tagged)
+
     for gen in range(1, GENERATIONS + 1):
-        results = run_generation(gen, agent_histories)
-        all_results.extend([{**r, "generation": gen} for r in results])
+        results = run_generation(gen, agent_histories, on_result=lambda r, g=gen: handle_result(r, g))
         agent_histories = update_histories(agent_histories, results)
 
     print_leaderboard(all_results)
-    save_results(all_results)
 
 
 if __name__ == "__main__":
