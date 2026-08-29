@@ -1,7 +1,7 @@
 {
-  "vulnerability": "Command Injection",
-  "file": "app.py",
-  "line": 8,
-  "severity": "critical",
-  "explanation": "User-controlled 'host' parameter is passed unsanitised to os.popen(), allowing arbitrary command execution."
+    "vulnerability_type": "Command Injection",
+    "file": "app.py",
+    "line": 14,
+    "severity": "critical",
+    "description": "User input passed directly to os.system() allows arbitrary command execution via shell metacharacters"
 }
