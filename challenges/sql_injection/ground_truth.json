@@ -1,0 +1,7 @@
+{
+  "vulnerability": "SQL Injection",
+  "file": "app.py",
+  "line": 5,
+  "severity": "critical",
+  "explanation": "User input is concatenated directly into an SQL query with no parameterisation."
+}

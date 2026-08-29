@@ -1,0 +1,7 @@
+{
+  "vulnerability": "Path Traversal",
+  "file": "app.py",
+  "line": 9,
+  "severity": "high",
+  "explanation": "User-supplied filename is concatenated to BASE_DIR with no sanitisation, allowing traversal outside the intended directory with '../' sequences."
+}

@@ -1,0 +1,7 @@
+{
+  "vulnerability": "Cross-Site Scripting (XSS)",
+  "file": "app.py",
+  "line": 7,
+  "severity": "high",
+  "explanation": "User-supplied input is rendered directly into HTML via render_template_string with no escaping."
+}
