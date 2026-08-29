@@ -1,7 +1,7 @@
 {
     "vulnerability_type": "Path Traversal",
     "file": "app.py",
-    "line": 13,
+    "line": 12,
     "severity": "high",
     "description": "User-controlled filename passed to os.path.join without sanitization allows directory traversal via '../' sequences"
 }

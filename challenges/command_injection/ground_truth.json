@@ -1,7 +1,7 @@
 {
     "vulnerability_type": "Command Injection",
     "file": "app.py",
-    "line": 14,
+    "line": 13,
     "severity": "critical",
     "description": "User input passed directly to os.system() allows arbitrary command execution via shell metacharacters"
 }
