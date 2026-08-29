@@ -1,89 +1,160 @@
 # CyberAgent Arena
 
-An AI security agent that learns to find vulnerabilities in code. Runs inside isolated Daytona sandboxes, gets scored by an evaluator, and improves its strategy across generations. Three agent variants compete in parallel — the strongest gets promoted.
+An AI security agent that learns to find vulnerabilities in code. It runs inside isolated Daytona sandboxes, gets scored by an evaluator, and improves its strategy across generations through continuous learning.
 
----
+## Quick Start
 
-## Person 1 — Challenges + Evaluator
-
-**Goal:** Create the vulnerable repos and the scoring system.
-
-- Create 5 small vulnerable repositories, one per vulnerability type:
-  - SQL Injection
-  - Cross-Site Scripting (XSS)
-  - Command Injection
-  - Path Traversal
-  - Hardcoded Credentials
-- Each repo has one vulnerable file and a hidden `ground_truth.json` containing: vulnerability type, file, line number, severity
-- Build `evaluator/evaluate.py` — takes the agent's answer and compares it against ground truth
-- Scoring: +5 correct vulnerability, +2 correct file, +2 correct line, +1 correct severity, -3 false positive, -5 missed, -0.1 per unnecessary tool call
-- Final score formula: 40% detection + 25% localisation + 15% explanation + 10% severity + 10% efficiency
-- Return a feedback string explaining what the agent got wrong so it can improve next round
-
----
-
-## Person 2 — Agent + Daytona Integration
-
-**Goal:** Build the agent that investigates repos inside Daytona sandboxes.
-
-- `sandbox.py` — create a fresh Daytona sandbox per run, upload the challenge repo into it, run commands, destroy it after
-- `tools.py` — implement four tools the agent can call inside the sandbox:
-  - `list_files` — list all files in the repo
-  - `read_file` — read a specific file
-  - `search_code` — grep for a pattern across the repo
-  - `run_static_analysis` — run bandit inside the sandbox and return JSON results
-- `agent.py` — LLM agent loop using Claude with tool use:
-  - **Baseline variant** — no tools, reasons from prompt alone
-  - **Tool Agent variant** — has access to all four tools
-  - **Self-Improving variant** — receives reward + feedback from previous round and adjusts its strategy
-- Each run returns: the agent's answer (vulnerability, file, line, severity, explanation) and number of tool calls used
-
----
-
-## Person 3 — Orchestrator + Frontend + Demo
-
-**Goal:** Wire everything together, build the React dashboard, run the arena, prepare the demo.
-
-### Backend (first half)
-- `main.py` — runs all three agent variants across all five challenges using a thread pool (one Daytona sandbox per agent per challenge)
-- Runs 3 generations — each generation passes the previous round's feedback back into the self-improving agent
-- Saves all results to `results.json` as they come in
-- Add a small Flask/FastAPI server (`server.py`) with two endpoints:
-  - `POST /run` — triggers `main.py` and streams progress
-  - `GET /results` — returns current `results.json`
-
-### Frontend (second half)
-- React app in `dashboard/` — single page, no routing needed
-- Three panels:
-  - **Leaderboard** — bar chart showing Baseline vs ToolAgent vs Self-Improving scores per generation
-  - **Agent Activity Log** — live scrolling feed of what each agent is doing (sandbox created, tool calls, answer submitted, reward received)
-  - **Challenge Results Table** — per challenge, per variant: ✓/✗ for detection, file, line, severity
-- Polls `GET /results` every 2 seconds to update in real time
-- Stack: React + Vite, TailwindCSS for styling, Recharts for the score graph
-- Keep it to one file (`App.jsx`) if time is tight — ship something that works over something that looks perfect
-
-### Demo
-- Owns the demo — clean run from scratch before 4:30 PM
-- Show: sandboxes spinning up → agent activity → generation 1 vs 3 score comparison → leaderboard with winner highlighted
-
----
-
-## Daytona's Role
-
-Every agent run gets its own isolated Daytona sandbox — the vulnerable code never runs on your machine. Sandboxes are created in ~90ms and destroyed immediately after the scan. This lets us run all three agent variants simultaneously without them interfering with each other.
-
----
-
-## Setup
+### 1. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
+cd dashboard && npm install && cd ..
 ```
 
-```
-DAYTONA_API_KEY=your_key
-ANTHROPIC_API_KEY=your_key
-```
+### 2. Set Environment Variables
+
+Create a `.env` file or export directly:
 
 ```bash
-python main.py
+export DAYTONA_API_KEY="your_daytona_key"
+export GEMINI_API_KEY="your_gemini_key"
+```
+
+Get your keys:
+- **Daytona:** https://app.daytona.io
+- **Gemini:** https://aistudio.google.com/app/apikey (free tier)
+
+### 3. Start the System
+
+```bash
+# Terminal 1: Backend
+python server.py
+
+# Terminal 2: Frontend
+cd dashboard && npm run dev
+```
+
+### 4. Open the Dashboard
+
+Go to **http://localhost:5173** and click **Run** to start the arena.
+
+---
+
+## How It Works
+
+### The Challenge
+5 vulnerable Python apps, each with a hidden security flaw:
+- SQL Injection
+- Cross-Site Scripting (XSS)
+- Command Injection
+- Path Traversal
+- Hardcoded Credentials
+
+### The Agents
+Three AI variants compete to find vulnerabilities:
+
+| Variant | Description | Tools |
+|---------|-------------|-------|
+| **Baseline** | Reasons from general knowledge only | None |
+| **Tool Agent** | Investigates code inside sandbox | list_files, read_file, search_code, run_static_analysis |
+| **Self-Improving** | Learns from feedback each generation | Same + feedback loop |
+
+### The Process
+1. **Sandbox Creation** — Daytona spins up an isolated container (~1 sec)
+2. **Code Upload** — Vulnerable app uploaded (ground truth hidden from agent)
+3. **Investigation** — Agent uses tools to analyze the code
+4. **Report** — Agent outputs: `{vulnerability_type, file, line, severity, explanation}`
+5. **Scoring** — Evaluator compares to ground truth
+6. **Learning** — Feedback saved for next generation
+
+### Scoring Formula
+- +5 correct vulnerability type
+- +2 correct file
+- +2 correct line (±3 lines tolerance)
+- +1 correct severity
+- -3 false positive
+- -0.1 per extra tool call
+
+**Final Score:** 40% detection + 25% localization + 15% explanation + 10% severity + 10% efficiency
+
+---
+
+## Continuous Learning
+
+The agent learns across sessions via `strategies.json`:
+
+```json
+{
+  "SQL Injection": {
+    "strategy": "Look for f-strings in database queries...",
+    "score": 8.7
+  }
+}
+```
+
+When an agent scores ≥7, its successful strategy is saved. Future runs load these patterns into the system prompt, making the agent smarter over time.
+
+---
+
+## Project Structure
+
+```
+├── challenges/           # 5 vulnerable apps + ground_truth.json
+│   ├── sql_injection/
+│   ├── xss/
+│   ├── command_injection/
+│   ├── path_traversal/
+│   └── hardcoded_secret/
+├── agent/
+│   ├── agent.py          # LLM agent loop (Gemini)
+│   ├── sandbox.py        # Daytona integration
+│   └── tools.py          # 4 investigation tools
+├── evaluator/
+│   └── evaluate.py       # Scoring system
+├── dashboard/            # React frontend
+├── server.py             # Flask API
+├── main.py               # Arena orchestrator
+├── strategies.json       # Learned patterns (persistent)
+└── results.json          # Run results
+```
+
+---
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/run` | POST | Start arena run |
+| `/results` | GET | Get current results |
+
+---
+
+## Tech Stack
+
+- **AI:** Google Gemini (gemini-flash-lite)
+- **Sandboxing:** Daytona
+- **Backend:** Python, Flask
+- **Frontend:** React, Vite, TailwindCSS, Recharts
+- **Evaluation:** Custom scoring engine
+
+---
+
+## Demo Results
+
+Example scores from a successful run:
+
+| Challenge | Tool Agent Score |
+|-----------|-----------------|
+| SQL Injection | 8.7/10 |
+| Command Injection | 8.7/10 |
+| XSS | 7.4/10 |
+| Path Traversal | 3.0/10 |
+| Hardcoded Secret | 2.0/10 |
+
+The Tool Agent significantly outperforms the Baseline (avg 1.1/10) by using its investigation tools.
+
+---
+
+## Team
+
+Built for the Daytona Hackathon 2026.
