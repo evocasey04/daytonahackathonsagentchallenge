@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.env
+results.json
+
+dashboard/node_modules/
+dashboard/dist/
