@@ -1,8 +1,10 @@
 import os
-from daytona import Daytona, CreateSandboxFromSnapshotParams
+from daytona import Daytona
 
 
 _client = None
+
+CHALLENGE_DIR = "/home/daytona/challenge"
 
 
 def get_client() -> Daytona:
@@ -15,16 +17,16 @@ def get_client() -> Daytona:
 def create_sandbox(challenge_dir: str):
     """Spin up a fresh Daytona sandbox and upload the challenge repo into it."""
     client = get_client()
-    sandbox = client.create(CreateSandboxFromSnapshotParams(language="python"))
+    sandbox = client.create()
 
-    sandbox.process.exec("mkdir -p /workspace/challenge")
+    sandbox.process.exec(f"mkdir -p {CHALLENGE_DIR}")
 
     for fname in os.listdir(challenge_dir):
         fpath = os.path.join(challenge_dir, fname)
         if os.path.isfile(fpath) and not fname.startswith("ground_truth"):
             with open(fpath, "rb") as f:
                 content = f.read()
-            sandbox.fs.upload_file(content, f"/workspace/challenge/{fname}")
+            sandbox.fs.upload_file(content, f"{CHALLENGE_DIR}/{fname}")
 
     return sandbox
 

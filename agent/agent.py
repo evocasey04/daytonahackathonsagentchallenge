@@ -1,6 +1,7 @@
 import json
-import anthropic
-from agent.tools import TOOL_DEFINITIONS, dispatch
+import os
+import requests
+from agent.tools import GEMINI_TOOLS, dispatch
 from agent.sandbox import create_sandbox, destroy_sandbox
 
 SYSTEM_PROMPT = """You are a security researcher investigating a code repository for vulnerabilities.
@@ -18,7 +19,8 @@ Your final answer MUST be a JSON object in this exact format:
 
 Do not include any text outside the JSON in your final answer."""
 
-MODEL = "claude-opus-5"
+MODEL = "gemini-3.6-flash"
+API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
 MAX_TOOL_CALLS = 20
 
 
@@ -30,53 +32,75 @@ def run_agent(challenge_dir: str, variant: str = "self_improving", feedback: str
     feedback: previous round feedback string (used by self_improving)
     history: list of previous (score, feedback) tuples for self_improving
     """
-    client = anthropic.Anthropic()
+    api_key = os.environ.get("GEMINI_API_KEY")
     sandbox = create_sandbox(challenge_dir)
     tool_call_count = 0
 
     try:
         system = _build_system_prompt(variant, feedback, history)
-        messages = [{"role": "user", "content": "Investigate the repository and find the security vulnerability."}]
+        contents = [
+            {"role": "user", "parts": [{"text": "Investigate the repository and find the security vulnerability."}]}
+        ]
 
         while True:
-            kwargs = {
-                "model": MODEL,
-                "max_tokens": 4096,
-                "system": system,
-                "messages": messages,
-                "output_config": {"effort": "low"},
+            payload = {
+                "system_instruction": {"parts": [{"text": system}]},
+                "contents": contents,
             }
 
             if variant != "baseline":
-                kwargs["tools"] = TOOL_DEFINITIONS
+                payload["tools"] = GEMINI_TOOLS
 
-            response = client.messages.create(**kwargs)
+            response = requests.post(
+                API_URL,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-goog-api-key": api_key,
+                },
+                json=payload,
+                timeout=120,
+            )
 
-            if response.stop_reason == "end_turn":
-                answer_text = _extract_last_text(response)
+            if response.status_code != 200:
+                print(f"API error: {response.status_code} - {response.text}")
+                break
+
+            data = response.json()
+
+            if not data.get("candidates"):
+                break
+
+            candidate = data["candidates"][0]
+            parts = candidate.get("content", {}).get("parts", [])
+
+            function_calls = [p["functionCall"] for p in parts if "functionCall" in p]
+
+            if not function_calls:
+                answer_text = ""
+                for p in parts:
+                    if "text" in p:
+                        answer_text += p["text"]
                 answer = _parse_answer(answer_text)
                 return {"answer": answer, "tool_calls": tool_call_count}
 
-            if response.stop_reason == "tool_use":
-                if tool_call_count >= MAX_TOOL_CALLS:
-                    break
+            if tool_call_count >= MAX_TOOL_CALLS:
+                break
 
-                tool_results = []
-                for block in response.content:
-                    if block.type == "tool_use":
-                        tool_call_count += 1
-                        result = dispatch(sandbox, block.name, block.input)
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": result,
-                        })
+            contents.append({"role": "model", "parts": parts})
 
-                messages.append({"role": "assistant", "content": response.content})
-                messages.append({"role": "user", "content": tool_results})
-                continue
+            function_responses = []
+            for fc in function_calls:
+                tool_call_count += 1
+                args = fc.get("args", {})
+                result = dispatch(sandbox, fc["name"], args)
+                function_responses.append({
+                    "functionResponse": {
+                        "name": fc["name"],
+                        "response": {"result": result}
+                    }
+                })
 
-            break
+            contents.append({"role": "user", "parts": function_responses})
 
     finally:
         destroy_sandbox(sandbox)
@@ -98,13 +122,6 @@ def _build_system_prompt(variant: str, feedback: str, history: list) -> str:
         prompt += f"\n\nYour scores across previous rounds: {scores}. Adjust your strategy to improve."
 
     return prompt
-
-
-def _extract_last_text(response) -> str:
-    for block in reversed(response.content):
-        if hasattr(block, "text"):
-            return block.text
-    return ""
 
 
 def _parse_answer(text: str) -> dict:
