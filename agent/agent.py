@@ -9,7 +9,7 @@ Be efficient — minimise tool calls. Once you are confident, submit your findin
 
 Your final answer MUST be a JSON object in this exact format:
 {
-  "vulnerability": "<type e.g. SQL Injection>",
+  "vulnerability_type": "<type e.g. SQL Injection>",
   "file": "<filename>",
   "line": <line number as integer>,
   "severity": "<critical|high|medium|low>",
@@ -17,6 +17,9 @@ Your final answer MUST be a JSON object in this exact format:
 }
 
 Do not include any text outside the JSON in your final answer."""
+
+MODEL = "claude-opus-5"
+MAX_TOOL_CALLS = 20
 
 
 def run_agent(challenge_dir: str, variant: str = "self_improving", feedback: str = "", history: list = None) -> dict:
@@ -36,7 +39,13 @@ def run_agent(challenge_dir: str, variant: str = "self_improving", feedback: str
         messages = [{"role": "user", "content": "Investigate the repository and find the security vulnerability."}]
 
         while True:
-            kwargs = {"model": "claude-opus-4-5", "max_tokens": 1024, "system": system, "messages": messages}
+            kwargs = {
+                "model": MODEL,
+                "max_tokens": 4096,
+                "system": system,
+                "messages": messages,
+                "output_config": {"effort": "low"},
+            }
 
             if variant != "baseline":
                 kwargs["tools"] = TOOL_DEFINITIONS
@@ -49,6 +58,9 @@ def run_agent(challenge_dir: str, variant: str = "self_improving", feedback: str
                 return {"answer": answer, "tool_calls": tool_call_count}
 
             if response.stop_reason == "tool_use":
+                if tool_call_count >= MAX_TOOL_CALLS:
+                    break
+
                 tool_results = []
                 for block in response.content:
                     if block.type == "tool_use":

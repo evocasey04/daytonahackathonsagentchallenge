@@ -5,29 +5,52 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from agent.agent import run_agent
-from evaluator.evaluate import evaluate, load_ground_truth
+from evaluator.evaluate import AgentFinding, evaluate, generate_feedback_string, load_challenge
 
 CHALLENGES_DIR = Path("challenges")
 VARIANTS = ["baseline", "tool_agent", "self_improving"]
 GENERATIONS = 3
+FINDING_FIELDS = {"vulnerability_type", "file", "line", "severity", "explanation"}
+
+
+def _answer_to_findings(answer: dict) -> list:
+    """Convert the agent's raw JSON answer into AgentFinding objects the evaluator expects."""
+    if not answer:
+        return []
+    fields = {k: v for k, v in answer.items() if k in FINDING_FIELDS}
+    try:
+        return [AgentFinding(
+            vulnerability_type=fields["vulnerability_type"],
+            file=fields["file"],
+            line=int(fields["line"]),
+            severity=fields["severity"],
+            explanation=fields.get("explanation", ""),
+        )]
+    except (KeyError, TypeError, ValueError):
+        return []
 
 
 def run_variant_on_challenge(variant: str, challenge_name: str, feedback: str = "", history: list = None) -> dict:
-    challenge_dir = str(CHALLENGES_DIR / challenge_name)
-    ground_truth = load_ground_truth(challenge_dir)
+    ground_truth, challenge_dir = load_challenge(challenge_name, str(CHALLENGES_DIR))
 
     print(f"  [{variant}] Starting sandbox for challenge: {challenge_name}")
     result = run_agent(challenge_dir, variant=variant, feedback=feedback, history=history or [])
 
-    score = evaluate(result["answer"], ground_truth, tool_calls_used=result["tool_calls"])
+    answer = result["answer"]
+    findings = _answer_to_findings(answer)
 
-    print(f"  [{variant}] Challenge: {challenge_name} | Score: {score['weighted_score']}% | Reward: {score['reward']}")
+    eval_result = evaluate(findings, ground_truth, tool_calls=result["tool_calls"])
+    result_feedback = generate_feedback_string(eval_result)
+
+    print(f"  [{variant}] Challenge: {challenge_name} | Score: {eval_result.total_score}/10.0")
     return {
         "variant": variant,
         "challenge": challenge_name,
-        "answer": result["answer"],
+        "answer": answer,
         "tool_calls": result["tool_calls"],
-        **score,
+        **eval_result.to_dict(),
+        "score": eval_result.total_score,
+        "feedback": result_feedback,
     }
 
 
@@ -57,7 +80,7 @@ def update_histories(agent_histories: dict, results: list) -> dict:
         if variant not in agent_histories:
             agent_histories[variant] = []
         agent_histories[variant].append({
-            "score": r["weighted_score"],
+            "score": r["score"],
             "feedback": r["feedback"],
         })
     return agent_histories
@@ -65,20 +88,20 @@ def update_histories(agent_histories: dict, results: list) -> dict:
 
 def print_leaderboard(all_results: list):
     print("\n" + "=" * 50)
-    print("         CYBERAGENT ARENA — FINAL RESULTS")
+    print("         CYBERAGENT ARENA - FINAL RESULTS")
     print("=" * 50)
 
     for variant in VARIANTS:
         variant_results = [r for r in all_results if r["variant"] == variant]
         if not variant_results:
             continue
-        avg = sum(r["weighted_score"] for r in variant_results) / len(variant_results)
-        bar = "█" * int(avg / 10) + "░" * (10 - int(avg / 10))
-        print(f"  {variant:<20} {bar}  {avg:.1f}%")
+        avg = sum(r["score"] for r in variant_results) / len(variant_results)
+        bar = "#" * int(avg) + "." * (10 - int(avg))
+        print(f"  {variant:<20} {bar}  {avg:.1f}/10.0")
 
     print("=" * 50)
     winner = max(VARIANTS, key=lambda v: sum(
-        r["weighted_score"] for r in all_results if r["variant"] == v
+        r["score"] for r in all_results if r["variant"] == v
     ))
     print(f"\n  Promoted Agent: {winner.upper()}")
 
